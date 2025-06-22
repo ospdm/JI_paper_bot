@@ -41,6 +41,7 @@ INITIAL_EXTENSIONS = [
     "commands.results",
     "commands.fullclearroles",
     "commands.jltinfo",
+    "commands.logs"
 ]
 
 class JIBot(commands.Bot):

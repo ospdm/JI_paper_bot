@@ -20,8 +20,8 @@ from roles.constants import (
 from typing import Optional
 
 # Каналы
-SUBMIT_CHANNEL_ID = 1384833941420118126  # канал, где пользователь подаёт заявку
-ADMIN_CHANNEL_ID  = 1385728489755381962  # канал для админов
+SUBMIT_CHANNEL_ID = 1386395567252570193  # канал, где пользователь подаёт заявку
+ADMIN_CHANNEL_ID  = 1386387590168580186  # канал для админов
 
 
 class AuthView(discord.ui.View):

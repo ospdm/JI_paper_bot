@@ -1,11 +1,15 @@
 # commands/addrole.py
 
 import logging
-import discord
-from discord.ext import commands
-from discord import app_commands
+import datetime
 from typing import Optional
 
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+import config  # DEVELOPMENT_GUILD_ID, EMBLEM_URL
+from database import get_db, User
 from roles.constants import (
     RANKS_MAP,
     CORPS_MAP,
@@ -27,8 +31,6 @@ from roles.constants import (
     worker_office_id,
     master_office_id,
 )
-import config  # DEVELOPMENT_GUILD_ID = 1366412463435944026
-from database import get_db, User
 
 # Собираем все мапы ролей
 ROLE_MAP = {}
@@ -59,6 +61,7 @@ ALLOWED_ISSUER_ROLES = [
     master_office_id,
 ]
 
+
 class AddRoleCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -82,43 +85,51 @@ class AddRoleCog(commands.Cog):
         # Проверяем, что у бота есть право Manage Roles
         me = interaction.guild.me  # type: ignore
         if not me.guild_permissions.manage_roles:
-            return await interaction.response.send_message(
-                "❗ У меня нет права **Manage Roles**, чтобы выдавать роли.",
-                ephemeral=True
+            em = discord.Embed(
+                title="❗ Нет права Manage Roles",
+                description="У меня нет права **Manage Roles**, чтобы выдавать роли.",
+                color=discord.Color.red(),
+                timestamp=datetime.datetime.utcnow()
             )
+            em.set_thumbnail(url=config.EMBLEM_URL)
+            return await interaction.response.send_message(embed=em, ephemeral=True)
 
         await interaction.response.defer(thinking=True)
 
         if member is None:
             member = interaction.user  # type: ignore
 
-        if role.id not in ALLOWED_ROLE_IDS:
-            mentions = " ".join(f"<@&{rid}>" for rid in ROLE_MAP.values())
-            return await interaction.followup.send(
-                f"❗ Роль {role.mention} не поддерживается этой командой.\n"
-                f"Доступные: {mentions}",
-                ephemeral=True
-            )
-
         if role in member.roles:
-            return await interaction.followup.send(
-                f"ℹ️ У {member.mention} уже есть роль {role.mention}.",
-                ephemeral=True
+            em = discord.Embed(
+                title="ℹ️ Роль уже есть",
+                description=f"У {member.mention} уже есть роль {role.mention}.",
+                color=discord.Color.orange(),
+                timestamp=datetime.datetime.utcnow()
             )
+            em.set_thumbnail(url=config.EMBLEM_URL)
+            return await interaction.followup.send(embed=em, ephemeral=True)
 
         try:
             await member.add_roles(role, reason=f"/addrole by {interaction.user}")
         except discord.Forbidden:
-            return await interaction.followup.send(
-                "❗ У меня нет прав на выдачу этой роли.",
-                ephemeral=True
+            em = discord.Embed(
+                title="❗ Нет прав",
+                description="У меня нет прав на выдачу этой роли.",
+                color=discord.Color.red(),
+                timestamp=datetime.datetime.utcnow()
             )
+            em.set_thumbnail(url=config.EMBLEM_URL)
+            return await interaction.followup.send(embed=em, ephemeral=True)
         except Exception as e:
             logging.exception("Ошибка при выдаче роли")
-            return await interaction.followup.send(
-                f"❗ Не удалось выдать роль: {e}",
-                ephemeral=True
+            em = discord.Embed(
+                title="❗ Не удалось выдать роль",
+                description=str(e),
+                color=discord.Color.red(),
+                timestamp=datetime.datetime.utcnow()
             )
+            em.set_thumbnail(url=config.EMBLEM_URL)
+            return await interaction.followup.send(embed=em, ephemeral=True)
 
         # Обновляем БД (если роль — ранг или корпус)
         db = next(get_db())
@@ -141,26 +152,34 @@ class AddRoleCog(commands.Cog):
         finally:
             db.close()
 
-        await interaction.followup.send(
-            f"✅ Роль {role.mention} выдана {member.mention}."
+        # — Успешный ответ —
+        success = discord.Embed(
+            title="✅ Роль выдана",
+            description=f"Роль {role.mention} выдана {member.mention}.",
+            color=discord.Color.green(),
+            timestamp=datetime.datetime.utcnow()
         )
+        success.set_thumbnail(url=config.EMBLEM_URL)
+        await interaction.followup.send(embed=success)
 
     @slash_addrole.error
     async def slash_addrole_error(self, interaction: discord.Interaction, error):
         # Если у пользователя нет одной из спец-ролей
         if isinstance(error, app_commands.MissingAnyRole):
             allowed = " ".join(f"<@&{rid}>" for rid in ALLOWED_ISSUER_ROLES)
-            embed = discord.Embed(
+            em = discord.Embed(
                 title="❌ Доступ запрещён",
                 description="Вы не имеете доступ к этой команде.",
-                color=discord.Color.red()
+                color=discord.Color.red(),
+                timestamp=datetime.datetime.utcnow()
             )
-            embed.add_field(
+            em.set_thumbnail(url=config.EMBLEM_URL)
+            em.add_field(
                 name="Доступ имеют следующие роли:",
                 value=allowed or "—",
                 inline=False
             )
-            return await interaction.response.send_message(embed=embed, ephemeral=True)
+            return await interaction.response.send_message(embed=em, ephemeral=True)
 
         # Прочие ошибки
         logging.exception("Необработанная ошибка в slash_addrole")

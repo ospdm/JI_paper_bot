@@ -1,11 +1,14 @@
+# commands/removerole.py
+
 import logging
 import datetime
-import discord
-from discord.ext import commands
-from discord import app_commands
 from typing import Optional
 
-import config  # DEVELOPMENT_GUILD_ID = 1366412463435944026
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+import config  # DEVELOPMENT_GUILD_ID, EMBLEM_URL
 from database import get_db, User, Vacation
 from roles.constants import (
     RANKS_MAP,
@@ -34,7 +37,7 @@ ROLE_MAP.update(VACATION_MAP)
 ROLE_MAP.update(POST_MAP)
 ALLOWED_ROLE_IDS = set(ROLE_MAP.values())
 
-# Те же, что и в addrole
+# Те же роли, что и в addrole
 ALLOWED_ISSUER_ROLES = [
     arc_id,
     lrc_gimel_id,
@@ -55,6 +58,21 @@ class RemoveRoleCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
+    def _make_embed(
+        self,
+        title: str,
+        description: Optional[str] = None,
+        color: discord.Color = discord.Color.from_rgb(255, 255, 255),
+    ) -> discord.Embed:
+        em = discord.Embed(
+            title=title,
+            description=description,
+            color=color,
+            timestamp=datetime.datetime.utcnow()
+        )
+        em.set_thumbnail(url=config.EMBLEM_URL)
+        return em
+
     @app_commands.guilds(discord.Object(id=config.DEVELOPMENT_GUILD_ID))
     @app_commands.command(
         name="removerole",
@@ -74,44 +92,47 @@ class RemoveRoleCog(commands.Cog):
         # Проверяем, что бот может управлять ролями
         me = interaction.guild.me  # type: ignore
         if not me.guild_permissions.manage_roles:
-            return await interaction.response.send_message(
-                "❗ У меня нет права **Manage Roles**, чтобы снимать роли.",
-                ephemeral=True
+            em = self._make_embed(
+                title="❗ Нет права Manage Roles",
+                description="У меня нет права **Manage Roles**, чтобы снимать роли.",
+                color=discord.Color.red()
             )
+            return await interaction.response.send_message(embed=em, ephemeral=True)
 
         await interaction.response.defer(thinking=True)
 
         if member is None:
             member = interaction.user  # type: ignore
 
-        if role.id not in ALLOWED_ROLE_IDS:
-            mentions = " ".join(f"<@&{rid}>" for rid in ROLE_MAP.values())
-            return await interaction.followup.send(
-                f"❗ Роль {role.mention} не поддерживается этой командой.\n"
-                f"Доступные: {mentions}",
-                ephemeral=True
-            )
-
+        # Нет такой роли у пользователя
         if role not in member.roles:
-            return await interaction.followup.send(
-                f"ℹ️ У {member.mention} нет роли {role.mention}.",
-                ephemeral=True
+            em = self._make_embed(
+                title="ℹ️ Роли нет",
+                description=f"У {member.mention} нет роли {role.mention}.",
+                color=discord.Color.orange()
             )
+            return await interaction.followup.send(embed=em, ephemeral=True)
 
+        # Пытаемся снять
         try:
             await member.remove_roles(role, reason=f"/removerole by {interaction.user}")
         except discord.Forbidden:
-            return await interaction.followup.send(
-                "❗ У меня нет прав на снятие этой роли.",
-                ephemeral=True
+            em = self._make_embed(
+                title="❗ Нет прав",
+                description="У меня нет прав на снятие этой роли.",
+                color=discord.Color.red()
             )
+            return await interaction.followup.send(embed=em, ephemeral=True)
         except Exception as e:
             logging.exception("Ошибка при удалении роли")
-            return await interaction.followup.send(
-                f"❗ Не удалось убрать роль: {e}",
-                ephemeral=True
+            em = self._make_embed(
+                title="❗ Не удалось удалить роль",
+                description=str(e),
+                color=discord.Color.red()
             )
+            return await interaction.followup.send(embed=em, ephemeral=True)
 
+        # Если это отпускная роль — закрываем запись в БД
         note = ""
         if role.id in VACATION_MAP.values():
             db = next(get_db())
@@ -134,33 +155,36 @@ class RemoveRoleCog(commands.Cog):
             finally:
                 db.close()
 
-        await interaction.followup.send(
-            f"✅ Роль {role.mention} снята у {member.mention}.{note}"
+        # Успешный Embed
+        em = self._make_embed(
+            title="✅ Роль снята",
+            description=f"Роль {role.mention} снята у {member.mention}.{note}",
+            color=discord.Color.green()
         )
+        await interaction.followup.send(embed=em)
 
     @slash_removerole.error
     async def slash_removerole_error(self, interaction: discord.Interaction, error):
-        # Нет спец-роли
         if isinstance(error, app_commands.MissingAnyRole):
             allowed = " ".join(f"<@&{rid}>" for rid in ALLOWED_ISSUER_ROLES)
-            embed = discord.Embed(
+            em = self._make_embed(
                 title="❌ Доступ запрещён",
-                description="Вы не имеете доступ к этой команде.",
+                description="Вы не имеете доступа к этой команде.",
                 color=discord.Color.red()
             )
-            embed.add_field(
+            em.add_field(
                 name="Доступ имеют следующие роли:",
                 value=allowed or "—",
                 inline=False
             )
-            return await interaction.response.send_message(embed=embed, ephemeral=True)
+            return await interaction.response.send_message(embed=em, ephemeral=True)
 
-        # Прочие
         logging.exception("Ошибка в slash_removerole")
-        if interaction.response.is_done():
-            await interaction.followup.send("❗ Произошла ошибка.", ephemeral=True)
-        else:
-            await interaction.response.send_message("❗ Произошла ошибка.", ephemeral=True)
+        em = self._make_embed(
+            title="❗ Произошла ошибка",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=em, ephemeral=True)
 
 
 async def setup(bot: commands.Bot):

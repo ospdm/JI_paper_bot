@@ -22,12 +22,13 @@ from database import (
 from roles.constants import (
     arc_id, lrc_gimel_id, lrc_id,
     mjr_gimel_id, mjr_id, cpt_id,
+    slt_id, lt_id, jlt_id,
     head_ji_id, adjutant_ji_id,
     leader_office_id, leader_penal_battalion_id,
     senate_id,
     director_office_id, leader_main_corps_id, leader_gimel_id,
-    curator_id, worker_office_id, master_office_id,
-    POST_MAP, CORPS_MAP,
+    curator_id, trainee_curator_id, worker_office_id, master_office_id,
+    POST_MAP, CORPS_MAP, lt_id,
 )
 
 # ID вашей тестовой гильдии
@@ -100,6 +101,9 @@ class InfoCog(commands.Cog):
                 (mjr_gimel_id, "Майор GIMEL"),
                 (mjr_id,       "Майор"),
                 (cpt_id,       "Капитан"),
+                (slt_id,       "Старший лейтенант"),
+                (lt_id,        "Лейтенант"),
+                (jlt_id,       "Младший лейтенант"),
             ]:
                 role_obj = member.guild.get_role(rid)
                 if role_obj and role_obj in member.roles:
